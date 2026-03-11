@@ -19,15 +19,42 @@ document.addEventListener("DOMContentLoaded", () => {
         activityCard.className = "activity-card";
 
         const spotsLeft = details.max_participants - details.participants.length;
+        const participantsList = details.participants.length
+          ? details.participants
+              .map(
+                (participant) =>
+                  `<li><span class="participant-name">${participant}</span><button class="delete-participant" data-activity="${name}" data-email="${participant}" aria-label="Remove ${participant}">✕</button></li>`
+              )
+              .join("")
+          : "<li><em>No participants yet</em></li>";
 
+        const headingId = `activity-${name.replace(/\s+/g, "-").toLowerCase()}`;
         activityCard.innerHTML = `
-          <h4>${name}</h4>
+          <h4 id="${headingId}">${name}</h4>
           <p>${details.description}</p>
           <p><strong>Schedule:</strong> ${details.schedule}</p>
           <p><strong>Availability:</strong> ${spotsLeft} spots left</p>
+          <div class="participants-wrapper">
+            <p><strong>Participants:</strong></p>
+            <ul class="participants-list">
+              ${participantsList}
+            </ul>
+          </div>
+          <a href="#signup-container" class="activity-signup-link" aria-label="Sign up for ${name}">Sign up for this activity</a>
         `;
 
         activitiesList.appendChild(activityCard);
+
+        // Make card keyboard-accessible and delegate click to sign up link.
+        activityCard.setAttribute("tabindex", "0");
+        activityCard.setAttribute("role", "button");
+        activityCard.setAttribute("aria-labelledby", headingId);
+        activityCard.addEventListener("keypress", (e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            activityCard.querySelector(".activity-signup-link").click();
+          }
+        });
 
         // Add option to select dropdown
         const option = document.createElement("option");
@@ -40,6 +67,45 @@ document.addEventListener("DOMContentLoaded", () => {
       console.error("Error fetching activities:", error);
     }
   }
+
+  // Handle participant removal
+  activitiesList.addEventListener("click", async (event) => {
+    const target = event.target;
+    if (!target.classList.contains("delete-participant")) {
+      return;
+    }
+
+    const activity = target.getAttribute("data-activity");
+    const email = target.getAttribute("data-email");
+
+    try {
+      const response = await fetch(
+        `/activities/${encodeURIComponent(activity)}/participants?email=${encodeURIComponent(email)}`,
+        {
+          method: "DELETE",
+        }
+      );
+
+      const result = await response.json();
+      if (response.ok) {
+        messageDiv.textContent = result.message;
+        messageDiv.className = "success";
+        fetchActivities();
+      } else {
+        messageDiv.textContent = result.detail || "Could not remove participant";
+        messageDiv.className = "error";
+      }
+    } catch (error) {
+      messageDiv.textContent = "Failed to remove participant. Please try again.";
+      messageDiv.className = "error";
+      console.error("Error removing participant:", error);
+    }
+
+    messageDiv.classList.remove("hidden");
+    setTimeout(() => {
+      messageDiv.classList.add("hidden");
+    }, 5000);
+  });
 
   // Handle form submission
   signupForm.addEventListener("submit", async (event) => {
@@ -62,6 +128,7 @@ document.addEventListener("DOMContentLoaded", () => {
         messageDiv.textContent = result.message;
         messageDiv.className = "success";
         signupForm.reset();
+        await fetchActivities();
       } else {
         messageDiv.textContent = result.detail || "An error occurred";
         messageDiv.className = "error";
